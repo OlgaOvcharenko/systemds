@@ -19,8 +19,14 @@
 
 package org.apache.sysds.runtime.controlprogram.federated;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -34,10 +40,10 @@ import java.util.stream.Stream;
 
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
+import org.apache.sysds.runtime.DMLRuntimeException;
 import org.apache.sysds.runtime.controlprogram.caching.CacheBlock;
 import org.apache.sysds.runtime.controlprogram.caching.CacheableData;
 import org.apache.sysds.runtime.controlprogram.federated.FederatedRequest.RequestType;
-import org.apache.sysds.runtime.DMLRuntimeException;
 import org.apache.sysds.runtime.instructions.cp.ScalarObject;
 import org.apache.sysds.runtime.instructions.cp.VariableCPInstruction;
 import org.apache.sysds.runtime.matrix.data.MatrixBlock;
@@ -45,6 +51,7 @@ import org.apache.sysds.runtime.util.CommonThreadPool;
 import org.apache.sysds.runtime.util.IndexRange;
 
 public class FederationMap {
+
 	public enum FType {
 		ROW, // row partitioned, groups of rows
 		COL, // column partitioned, groups of columns
@@ -76,6 +83,9 @@ public class FederationMap {
 	private long _ID = -1;
 	private final Map<FederatedRange, FederatedData> _fedMap;
 	private FType _type;
+	// <file name, <isSliced, serialized CacheBlock>>
+	private Map<String, Pair<Boolean, ByteArrayOutputStream>> _cachedBroadcasts = new HashMap<>();
+
 
 	public FederationMap(Map<FederatedRange, FederatedData> fedMap) {
 		this(-1, fedMap);
@@ -120,9 +130,46 @@ public class FederationMap {
 	}
 
 	public FederatedRequest broadcast(CacheableData<?> data) {
-		// prepare single request for all federated data
+		CacheBlock cb = null;
+
+		Pair<Boolean, ByteArrayOutputStream> cachedData;
+		if(_cachedBroadcasts.containsKey(data.getFileName()) && !(cachedData = _cachedBroadcasts.get(data.getFileName())).getLeft()) {
+			//De-serialization of object
+			ByteArrayInputStream bis = new   ByteArrayInputStream(cachedData.getRight().toByteArray());
+			ObjectInputStream in = null;
+			try {
+				in = new ObjectInputStream(bis);
+				cb = (CacheBlock) in.readObject();
+			}
+			catch(IOException | ClassNotFoundException e) {
+				e.printStackTrace();
+			}
+
+			//TODO add remove
+			boolean reuse = true; //TODO
+			if(!reuse)
+				_cachedBroadcasts.remove(data.getFileName());
+
+		} else {
+			cb = data.acquireReadAndRelease();
+
+			boolean reuse = true; //TODO
+			if(reuse) {
+				//Serialization of object
+				ByteArrayOutputStream bos = new ByteArrayOutputStream();
+				ObjectOutputStream out = null;
+				try {
+					out = new ObjectOutputStream(bos);
+					out.writeObject(cb);
+				}
+				catch(IOException e) {
+					e.printStackTrace();
+				}
+				_cachedBroadcasts.put(data.getFileName(), Pair.of(false, bos));
+			}
+		}
+
 		long id = FederationUtils.getNextFedDataID();
-		CacheBlock cb = data.acquireReadAndRelease();
 		return new FederatedRequest(RequestType.PUT_VAR, id, cb);
 	}
 
@@ -144,9 +191,48 @@ public class FederationMap {
 		if( _type == FType.FULL )
 			return new FederatedRequest[]{broadcast(data)};
 
+		CacheBlock cb = null;
+
+		Pair<Boolean, ByteArrayOutputStream> cachedData;
+		if(_cachedBroadcasts.containsKey(data.getFileName()) && !(cachedData = _cachedBroadcasts.get(data.getFileName())).getLeft()) {
+			//De-serialization of object
+			ByteArrayInputStream bis = new   ByteArrayInputStream(cachedData.getRight().toByteArray());
+			ObjectInputStream in = null;
+			try {
+				in = new ObjectInputStream(bis);
+				cb = (CacheBlock) in.readObject();
+			}
+			catch(IOException | ClassNotFoundException e) {
+				e.printStackTrace();
+			}
+
+			//TODO add remove
+			boolean reuse = true; //TODO
+			if(!reuse)
+				_cachedBroadcasts.remove(data.getFileName());
+
+		} else {
+			cb = data.acquireReadAndRelease();
+
+			boolean reuse = true; //TODO
+			if(reuse) {
+				//Serialization of object
+				ByteArrayOutputStream bos = new ByteArrayOutputStream();
+				ObjectOutputStream out = null;
+				try {
+					out = new ObjectOutputStream(bos);
+					out.writeObject(cb);
+				}
+				catch(IOException e) {
+					e.printStackTrace();
+				}
+				_cachedBroadcasts.put(data.getFileName(), Pair.of(false, bos));
+			}
+		}
+
+
 		// prepare broadcast id and pin input
 		long id = FederationUtils.getNextFedDataID();
-		CacheBlock cb = data.acquireReadAndRelease();
 
 		// prepare indexing ranges
 		int[][] ix = new int[_fedMap.size()][];
@@ -166,9 +252,10 @@ public class FederationMap {
 
 		// multi-threaded block slicing and federation request creation
 		FederatedRequest[] ret = new FederatedRequest[ix.length];
+		CacheBlock finalCb = cb;
 		Arrays.parallelSetAll(ret,
 			i -> new FederatedRequest(RequestType.PUT_VAR, id,
-				cb.slice(ix[i][0], ix[i][1], ix[i][2], ix[i][3], new MatrixBlock())));
+				finalCb.slice(ix[i][0], ix[i][1], ix[i][2], ix[i][3], new MatrixBlock())));
 		return ret;
 	}
 
