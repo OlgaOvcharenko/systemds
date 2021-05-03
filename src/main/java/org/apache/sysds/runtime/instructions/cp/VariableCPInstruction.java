@@ -66,7 +66,6 @@ import org.apache.sysds.runtime.meta.TensorCharacteristics;
 import org.apache.sysds.runtime.util.DataConverter;
 import org.apache.sysds.runtime.util.HDFSTool;
 import org.apache.sysds.runtime.util.ProgramConverter;
-import org.apache.sysds.runtime.util.UtilFunctions;
 import org.apache.sysds.utils.Statistics;
 
 public class VariableCPInstruction extends CPInstruction implements LineageTraceable {
@@ -419,7 +418,7 @@ public class VariableCPInstruction extends CPInstruction implements LineageTrace
 					boolean hasHeader = Boolean.parseBoolean(parts[curPos]);
 					String delim = parts[curPos+1];
 					boolean fill = Boolean.parseBoolean(parts[curPos+2]);
-					double fillValue = UtilFunctions.parseToDouble(parts[curPos+3],UtilFunctions.defaultNaString);
+					double fillValue = Double.parseDouble(parts[curPos+3]);
 					String naStrings = null;
 					if ( parts.length == 16+extSchema )
 						naStrings = parts[curPos+4];
@@ -437,8 +436,9 @@ public class VariableCPInstruction extends CPInstruction implements LineageTrace
 			
 		case CopyVariable:
 			// Value types are not given here
-			in1 = new CPOperand(parts[1], ValueType.UNKNOWN, DataType.UNKNOWN);
-			in2 = new CPOperand(parts[2], ValueType.UNKNOWN, DataType.UNKNOWN);
+			boolean withTypes = parts[1].split(VALUETYPE_PREFIX).length > 2 && parts[2].split(VALUETYPE_PREFIX).length > 2;
+			in1 = withTypes ? new CPOperand(parts[1]) : new CPOperand(parts[1], ValueType.UNKNOWN, DataType.UNKNOWN);
+			in2 = withTypes ? new CPOperand(parts[2]) : new CPOperand(parts[2], ValueType.UNKNOWN, DataType.UNKNOWN);
 			break;
 			
 		case MoveVariable:
@@ -906,7 +906,7 @@ public class VariableCPInstruction extends CPInstruction implements LineageTrace
 	 * @param ec execution context
 	 */
 	private void processCopyInstruction(ExecutionContext ec) {
-		// get source variable 
+		// get source variable
 		Data dd = ec.getVariable(getInput1().getName());
 		
 		if ( dd == null )
