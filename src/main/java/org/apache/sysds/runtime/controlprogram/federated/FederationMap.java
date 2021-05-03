@@ -19,13 +19,9 @@
 
 package org.apache.sysds.runtime.controlprogram.federated;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.io.ObjectInputStream;
-import java.io.ObjectOutputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -38,12 +34,13 @@ import java.util.concurrent.Future;
 import java.util.function.BiFunction;
 import java.util.stream.Stream;
 
+import breeze.util.Index;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.apache.commons.lang3.tuple.Pair;
-import org.apache.sysds.runtime.DMLRuntimeException;
 import org.apache.sysds.runtime.controlprogram.caching.CacheBlock;
 import org.apache.sysds.runtime.controlprogram.caching.CacheableData;
 import org.apache.sysds.runtime.controlprogram.federated.FederatedRequest.RequestType;
+import org.apache.sysds.runtime.DMLRuntimeException;
 import org.apache.sysds.runtime.instructions.cp.ScalarObject;
 import org.apache.sysds.runtime.instructions.cp.VariableCPInstruction;
 import org.apache.sysds.runtime.matrix.data.FrameBlock;
@@ -52,7 +49,6 @@ import org.apache.sysds.runtime.util.CommonThreadPool;
 import org.apache.sysds.runtime.util.IndexRange;
 
 public class FederationMap {
-
 	public enum FType {
 		ROW, // row partitioned, groups of rows
 		COL, // column partitioned, groups of columns
@@ -84,9 +80,10 @@ public class FederationMap {
 	private long _ID = -1;
 	private final Map<FederatedRange, FederatedData> _fedMap;
 	private FType _type;
-	// <file name, <isSliced, serialized CacheBlock>>
-	private Map<String, Pair<Boolean, ByteArrayOutputStream>> _cachedBroadcasts = new HashMap<>();
 
+	private static Map<Long, Long> _broadcastMap = new HashMap<>();
+	// list with id and ranges, especially important for leftIndexing
+	private static Map<Long, List> _broadcastSlicedMap = new HashMap<>();
 
 	public FederationMap(Map<FederatedRange, FederatedData> fedMap) {
 		this(-1, fedMap);
@@ -131,46 +128,12 @@ public class FederationMap {
 	}
 
 	public FederatedRequest broadcast(CacheableData<?> data) {
-		CacheBlock cb = null;
+		//TODO actual clean
+//		_broadcastSlicedMap.remove(data.getUniqueID());
 
-		Pair<Boolean, ByteArrayOutputStream> cachedData;
-		if(_cachedBroadcasts.containsKey(data.getFileName()) && !(cachedData = _cachedBroadcasts.get(data.getFileName())).getLeft()) {
-			//De-serialization of object
-			ByteArrayInputStream bis = new   ByteArrayInputStream(cachedData.getRight().toByteArray());
-			ObjectInputStream in = null;
-			try {
-				in = new ObjectInputStream(bis);
-				cb = (CacheBlock) in.readObject();
-			}
-			catch(IOException | ClassNotFoundException e) {
-				e.printStackTrace();
-			}
-
-			//TODO add remove
-			boolean reuse = true; //TODO
-			if(!reuse)
-				_cachedBroadcasts.remove(data.getFileName());
-
-		} else {
-			cb = data.acquireReadAndRelease();
-
-			boolean reuse = true; //TODO
-			if(reuse) {
-				//Serialization of object
-				ByteArrayOutputStream bos = new ByteArrayOutputStream();
-				ObjectOutputStream out = null;
-				try {
-					out = new ObjectOutputStream(bos);
-					out.writeObject(cb);
-				}
-				catch(IOException e) {
-					e.printStackTrace();
-				}
-				_cachedBroadcasts.put(data.getFileName(), Pair.of(false, bos));
-			}
-		}
-
-		long id = FederationUtils.getNextFedDataID();
+		long id = _broadcastMap.getOrDefault(data.getUniqueID(), FederationUtils.getNextFedDataID());
+		CacheBlock cb = _broadcastMap.containsKey(data.getUniqueID()) ? null : data.acquireReadAndRelease();
+		_broadcastMap.putIfAbsent(data.getUniqueID(), id);
 		return new FederatedRequest(RequestType.PUT_VAR, id, cb);
 	}
 
@@ -192,71 +155,45 @@ public class FederationMap {
 		if( _type == FType.FULL )
 			return new FederatedRequest[]{broadcast(data)};
 
-		CacheBlock cb = null;
-
-		Pair<Boolean, ByteArrayOutputStream> cachedData;
-		if(_cachedBroadcasts.containsKey(data.getFileName()) && !(cachedData = _cachedBroadcasts.get(data.getFileName())).getLeft()) {
-			//De-serialization of object
-			ByteArrayInputStream bis = new   ByteArrayInputStream(cachedData.getRight().toByteArray());
-			ObjectInputStream in = null;
-			try {
-				in = new ObjectInputStream(bis);
-				cb = (CacheBlock) in.readObject();
-			}
-			catch(IOException | ClassNotFoundException e) {
-				e.printStackTrace();
-			}
-
-			//TODO add remove
-			boolean reuse = true; //TODO
-			if(!reuse)
-				_cachedBroadcasts.remove(data.getFileName());
-
-		} else {
-			cb = data.acquireReadAndRelease();
-
-			boolean reuse = true; //TODO
-			if(reuse) {
-				//Serialization of object
-				ByteArrayOutputStream bos = new ByteArrayOutputStream();
-				ObjectOutputStream out = null;
-				try {
-					out = new ObjectOutputStream(bos);
-					out.writeObject(cb);
-				}
-				catch(IOException e) {
-					e.printStackTrace();
-				}
-				_cachedBroadcasts.put(data.getFileName(), Pair.of(false, bos));
-			}
-		}
-
-
-		// prepare broadcast id and pin input
-		long id = FederationUtils.getNextFedDataID();
-
-		// prepare indexing ranges
+		long id;
+		FederatedRequest[] ret;
 		int[][] ix = new int[_fedMap.size()][];
-		int pos = 0;
-		for(Entry<FederatedRange, FederatedData> e : _fedMap.entrySet()) {
-			int beg = e.getKey().getBeginDimsInt()[(_type == FType.ROW ? 0 : 1)];
-			int end = e.getKey().getEndDimsInt()[(_type == FType.ROW ? 0 : 1)];
-			int nr = _type == FType.ROW ? cb.getNumRows() : cb.getNumColumns();
-			int nc = _type == FType.ROW ? cb.getNumColumns() : cb.getNumRows();
-			int rl = transposed ? 0 : beg;
-			int ru = transposed ? nr - 1 : end - 1;
-			int cl = transposed ? beg : 0;
-			int cu = transposed ? end - 1 : nc - 1;
-			ix[pos++] = _type == FType.ROW ?
-				new int[] {rl, ru, cl, cu} : new int[] {cl, cu, rl, ru};
-		}
 
-		// multi-threaded block slicing and federation request creation
-		FederatedRequest[] ret = new FederatedRequest[ix.length];
-		CacheBlock finalCb = cb;
-		Arrays.parallelSetAll(ret,
-			i -> new FederatedRequest(RequestType.PUT_VAR, id,
-				finalCb.slice(ix[i][0], ix[i][1], ix[i][2], ix[i][3], new MatrixBlock())));
+		//TODO actual clean
+//		_broadcastMap.remove(data.getUniqueID());
+
+		if(_broadcastSlicedMap.containsKey(data.getUniqueID())) {
+			id = (Long) _broadcastSlicedMap.get(data.getUniqueID()).get(0);
+			ix = (int[][]) _broadcastSlicedMap.get(data.getUniqueID()).get(1);
+
+			ret = new FederatedRequest[ix.length];
+			Arrays.parallelSetAll(ret,
+				i -> new FederatedRequest(RequestType.PUT_VAR, id, new MatrixBlock()));
+		}
+		else {
+			id = FederationUtils.getNextFedDataID();
+			CacheBlock cb = data.acquireReadAndRelease();
+			_broadcastSlicedMap.putIfAbsent(data.getUniqueID(), Arrays.asList(id, ix));
+
+			// prepare indexing ranges
+			int pos = 0;
+			for(Entry<FederatedRange, FederatedData> e : _fedMap.entrySet()) {
+				int beg = e.getKey().getBeginDimsInt()[(_type == FType.ROW ? 0 : 1)];
+				int end = e.getKey().getEndDimsInt()[(_type == FType.ROW ? 0 : 1)];
+				int nr = _type == FType.ROW ? cb.getNumRows() : cb.getNumColumns();
+				int nc = _type == FType.ROW ? cb.getNumColumns() : cb.getNumRows();
+				int rl = transposed ? 0 : beg;
+				int ru = transposed ? nr - 1 : end - 1;
+				int cl = transposed ? beg : 0;
+				int cu = transposed ? end - 1 : nc - 1;
+				ix[pos++] = _type == FType.ROW ? new int[] {rl, ru, cl, cu} : new int[] {cl, cu, rl, ru};
+			}
+
+			// multi-threaded block slicing and federation request creation
+			ret = new FederatedRequest[ix.length];
+			int[][] finalIx = ix;
+			Arrays.parallelSetAll(ret, i -> new FederatedRequest(RequestType.PUT_VAR, id, cb.slice(finalIx[i][0], finalIx[i][1], finalIx[i][2], finalIx[i][3], new MatrixBlock())));
+		}
 		return ret;
 	}
 
@@ -380,7 +317,7 @@ public class FederationMap {
 
 	public FederatedRequest cleanup(long tid, long... id) {
 		FederatedRequest request = new FederatedRequest(RequestType.EXEC_INST, -1,
-			VariableCPInstruction.prepareRemoveInstruction(id).toString());
+			VariableCPInstruction.prepareRemoveInstruction(id).toString()); //TODO if actual clean needed e.g. removing broadcast after broadcastSliced
 		request.setTID(tid);
 		return request;
 	}

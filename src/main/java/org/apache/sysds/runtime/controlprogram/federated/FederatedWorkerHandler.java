@@ -47,6 +47,7 @@ import org.apache.sysds.runtime.controlprogram.federated.FederatedRequest.Reques
 import org.apache.sysds.runtime.controlprogram.federated.FederatedResponse.ResponseType;
 import org.apache.sysds.runtime.instructions.Instruction;
 import org.apache.sysds.runtime.instructions.InstructionParser;
+import org.apache.sysds.runtime.instructions.InstructionUtils;
 import org.apache.sysds.runtime.instructions.cp.Data;
 import org.apache.sysds.runtime.instructions.cp.ListObject;
 import org.apache.sysds.runtime.instructions.cp.ScalarObject;
@@ -68,12 +69,18 @@ public class FederatedWorkerHandler extends ChannelInboundHandlerAdapter {
 	protected static Logger log = Logger.getLogger(FederatedWorkerHandler.class);
 
 	private final ExecutionContextMap _ecm;
+	private final FederatedWorker _federatedWorker;
 
 	public FederatedWorkerHandler(ExecutionContextMap ecm) {
+		this(ecm, null);
+	}
+
+	public FederatedWorkerHandler(ExecutionContextMap ecm, FederatedWorker federatedWorker) {
 		// Note: federated worker handler created for every command;
 		// and concurrent parfor threads at coordinator need separate
 		// execution contexts at the federated sites too
 		_ecm = ecm;
+		_federatedWorker = federatedWorker;
 	}
 
 	@Override
@@ -248,6 +255,10 @@ public class FederatedWorkerHandler extends ChannelInboundHandlerAdapter {
 	}
 
 	private FederatedResponse putVariable(FederatedRequest request) {
+		// if already broadcast
+		if(_federatedWorker._broadcasts.contains(request.getID()))
+			return new FederatedResponse(ResponseType.SUCCESS_EMPTY);
+
 		checkNumParams(request.getNumParams(), 1);
 		String varname = String.valueOf(request.getID());
 		ExecutionContext ec = _ecm.get(request.getTID());
@@ -268,6 +279,7 @@ public class FederatedWorkerHandler extends ChannelInboundHandlerAdapter {
 				"FederatedWorkerHandler: Unsupported object type, has to be of type CacheBlock or ScalarObject");
 
 		// set variable and construct empty response
+		_federatedWorker._broadcasts.add(request.getID());
 		ec.setVariable(varname, data);
 		if (DMLScript.LINEAGE)
 			ec.getLineage().set(varname, new LineageItem(String.valueOf(request.getChecksum(0))));
@@ -307,6 +319,11 @@ public class FederatedWorkerHandler extends ChannelInboundHandlerAdapter {
 		pb.getInstructions().clear();
 		Instruction receivedInstruction = InstructionParser.parseSingleInstruction((String) request.getParam(0));
 		pb.getInstructions().add(receivedInstruction);
+
+		// ignore removal of already broadcasted var
+		if(receivedInstruction.getOpcode().equals("rmvar") &&
+			_federatedWorker._broadcasts.contains(Long.parseLong(InstructionUtils.getInstructionParts(receivedInstruction.getInstructionString())[1])))
+			return new FederatedResponse(ResponseType.SUCCESS_EMPTY);
 
 		if (DMLScript.LINEAGE)
 			// Compiler assisted optimizations are not applicable for Fed workers.

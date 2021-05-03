@@ -20,6 +20,8 @@
 package org.apache.sysds.runtime.controlprogram.federated;
 
 import java.security.cert.CertificateException;
+import java.util.ArrayList;
+import java.util.List;
 
 import javax.net.ssl.SSLException;
 
@@ -48,6 +50,7 @@ public class FederatedWorker {
 
 	private int _port;
 	private final ExecutionContextMap _ecm;
+	public List<Long> _broadcasts = new ArrayList<>();
 
 	public FederatedWorker(int port) {
 		_ecm = new ExecutionContextMap();
@@ -62,6 +65,8 @@ public class FederatedWorker {
 		// TODO add ability to use real ssl files, not self signed certificates.
 		SelfSignedCertificate cert = new SelfSignedCertificate();
 		final SslContext cont2 = SslContextBuilder.forServer(cert.certificate(), cert.privateKey()).build();
+
+		FederatedWorker federatedWorker = this;
 
 		try {
 			b.group(bossGroup, workerGroup).channel(NioServerSocketChannel.class)
@@ -78,7 +83,7 @@ public class FederatedWorker {
 							new ObjectDecoder(Integer.MAX_VALUE,
 								ClassResolvers.weakCachingResolver(ClassLoader.getSystemClassLoader())));
 						cp.addLast("ObjectEncoder", new ObjectEncoder());
-						cp.addLast("FederatedWorkerHandler", new FederatedWorkerHandler(_ecm));
+						cp.addLast("FederatedWorkerHandler", new FederatedWorkerHandler(_ecm, federatedWorker));
 					}
 				}).option(ChannelOption.SO_BACKLOG, 128).childOption(ChannelOption.SO_KEEPALIVE, true);
 			log.info("Starting Federated Worker server at port: " + _port);
