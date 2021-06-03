@@ -69,7 +69,8 @@ public class FederatedKmeansTest extends AutomatedTestBase {
 			// {2000, 50, 1, 1}, {1000, 100, 1, 1},
 			// {10000, 10, 2, 1},
 			// {2000, 50, 2, 1}, {1000, 100, 2, 1}, //concurrent requests
-			{10000, 10, 2, 2}, // repeated exec
+//			{10000, 10, 2, 2}, // repeated exec
+			 {10000, 10, 16, 1},
 			// TODO more runs e.g., 16 -> but requires rework RPC framework first
 			// (e.g., see paramserv?)
 		});
