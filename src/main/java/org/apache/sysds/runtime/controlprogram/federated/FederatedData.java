@@ -65,6 +65,8 @@ public class FederatedData {
 	private final InetSocketAddress _address;
 	private final String _filepath;
 
+	private Types.ReplicationType _replicationType; // replica after broadcast
+
 	/**
 	 * The ID of default matrix/tensor on which operations get executed if no other ID is given.
 	 */
@@ -76,6 +78,8 @@ public class FederatedData {
 		_filepath = filepath;
 		if(_address != null)
 			_allFedSites.add(_address);
+
+		_replicationType = null;
 	}
 
 	public FederatedData(Types.DataType dataType, InetSocketAddress address, String filepath, long varID) {
@@ -83,6 +87,18 @@ public class FederatedData {
 		_address = address;
 		_filepath = filepath;
 		_varID = varID;
+
+		_replicationType = null;
+	}
+
+	public FederatedData(Types.DataType dataType, InetSocketAddress address, String filepath, Types.ReplicationType replicationType) {
+		this(dataType, address, filepath);
+		_replicationType = replicationType;
+	}
+
+	public FederatedData(Types.DataType dataType, InetSocketAddress address, String filepath, long varID, Types.ReplicationType replicationType) {
+		this(dataType, address, filepath, varID);
+		_replicationType = replicationType;
 	}
 
 	public InetSocketAddress getAddress() {
@@ -108,6 +124,8 @@ public class FederatedData {
 	public boolean isInitialized() {
 		return _varID != -1;
 	}
+
+	public Types.ReplicationType getReplicationType() { return _replicationType; }
 
 	boolean equalAddress(FederatedData that) {
 		return _address != null && that != null && that._address != null && _address.equals(that._address);

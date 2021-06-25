@@ -21,12 +21,18 @@ package org.apache.sysds.runtime.controlprogram.federated;
 
 import java.io.BufferedReader;
 import java.io.InputStreamReader;
+import java.net.InetSocketAddress;
+import java.net.UnknownHostException;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 
 import io.netty.channel.ChannelFuture;
 import io.netty.channel.ChannelFutureListener;
 import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.log4j.Logger;
@@ -47,9 +53,11 @@ import org.apache.sysds.runtime.controlprogram.federated.FederatedRequest.Reques
 import org.apache.sysds.runtime.controlprogram.federated.FederatedResponse.ResponseType;
 import org.apache.sysds.runtime.instructions.Instruction;
 import org.apache.sysds.runtime.instructions.InstructionParser;
+import org.apache.sysds.runtime.instructions.InstructionUtils;
 import org.apache.sysds.runtime.instructions.cp.Data;
 import org.apache.sysds.runtime.instructions.cp.ListObject;
 import org.apache.sysds.runtime.instructions.cp.ScalarObject;
+import org.apache.sysds.runtime.instructions.fed.InitFEDInstruction;
 import org.apache.sysds.runtime.io.FileFormatPropertiesCSV;
 import org.apache.sysds.runtime.io.IOUtilFunctions;
 import org.apache.sysds.runtime.lineage.LineageCache;
@@ -57,6 +65,8 @@ import org.apache.sysds.runtime.lineage.LineageCacheConfig;
 import org.apache.sysds.runtime.lineage.LineageCacheConfig.ReuseCacheType;
 import org.apache.sysds.runtime.lineage.LineageItem;
 import org.apache.sysds.runtime.lineage.LineageItemUtils;
+import org.apache.sysds.runtime.matrix.data.FrameBlock;
+import org.apache.sysds.runtime.matrix.data.MatrixBlock;
 import org.apache.sysds.runtime.meta.MatrixCharacteristics;
 import org.apache.sysds.runtime.meta.MetaDataAll;
 import org.apache.sysds.runtime.meta.MetaDataFormat;
@@ -68,12 +78,18 @@ public class FederatedWorkerHandler extends ChannelInboundHandlerAdapter {
 	protected static Logger log = Logger.getLogger(FederatedWorkerHandler.class);
 
 	private final ExecutionContextMap _ecm;
+	private final FederatedWorker _federatedWorker;
 
 	public FederatedWorkerHandler(ExecutionContextMap ecm) {
 		// Note: federated worker handler created for every command;
 		// and concurrent parfor threads at coordinator need separate
 		// execution contexts at the federated sites too
+		this(ecm, null);
+	}
+
+	public FederatedWorkerHandler(ExecutionContextMap ecm, FederatedWorker federatedWorker) {
 		_ecm = ecm;
+		_federatedWorker = federatedWorker;
 	}
 
 	@Override
@@ -150,6 +166,8 @@ public class FederatedWorkerHandler extends ChannelInboundHandlerAdapter {
 					return execUDF(request);
 				case CLEAR:
 					return execClear();
+				case PUT_FED_VAR:
+					putFedInput(request);
 				default:
 					String message = String.format("Method %s is not supported.", method);
 					return new FederatedResponse(ResponseType.ERROR, new FederatedWorkerHandlerException(message));
@@ -308,6 +326,12 @@ public class FederatedWorkerHandler extends ChannelInboundHandlerAdapter {
 		Instruction receivedInstruction = InstructionParser.parseSingleInstruction((String) request.getParam(0));
 		pb.getInstructions().add(receivedInstruction);
 
+		long id = Long.parseLong(InstructionUtils.getInstructionParts(receivedInstruction.getInstructionString())[1]);
+		if(receivedInstruction.getOpcode().equals("rmvar") &&
+			_federatedWorker._broadcasts.contains(new ImmutablePair<>(id, Types.ReplicationType.NONE)) ||
+			_federatedWorker._broadcasts.contains(new ImmutablePair<>(id, Types.ReplicationType.FULL)))
+			return new FederatedResponse(ResponseType.SUCCESS_EMPTY);
+
 		if (DMLScript.LINEAGE)
 			// Compiler assisted optimizations are not applicable for Fed workers.
 			// e.g. isMarkedForCaching fails as output operands are saved in the 
@@ -367,7 +391,66 @@ public class FederatedWorkerHandler extends ChannelInboundHandlerAdapter {
 			return new FederatedResponse(ResponseType.ERROR, new FederatedWorkerHandlerException(msg));
 		}
 	}
-	
+
+	private FederatedResponse putFedInput(FederatedRequest request) throws UnknownHostException {
+//		checkNumParams(request.getNumParams(), 7);
+		String varname = String.valueOf(request.getID());
+		ExecutionContext ec = _ecm.get(request.getTID());
+		if(ec.containsVariable(varname)) {
+			return new FederatedResponse(ResponseType.ERROR, "Variable " + request.getID() + " already existing.");
+		}
+
+		Types.DataType fedDataType = (DataType) request.getParam(0); // matrix or frame
+		InetSocketAddress inetSocketAddress = (InetSocketAddress) request.getParam(1); // address
+		String filePath = (String) request.getParam(2);
+
+		List<Pair<FederatedRange, FederatedData>> feds = new ArrayList<>();
+
+		int size = (int) request.getParam(3);
+		long rows =  (long) request.getParam(5);
+		long cols =  (long) request.getParam(6);
+		for(int i = 0; i < size; i ++) {
+			FederatedData federatedData;
+			if(request.getParam(4) == Types.ReplicationType.FULL) {
+				federatedData = new FederatedData(fedDataType, inetSocketAddress,
+					filePath, Types.ReplicationType.FULL);
+				feds.add(new ImmutablePair<>(new FederatedRange(new long[] {0, 0}, new long[] {rows, cols}), federatedData));
+				_federatedWorker._broadcasts.add(new ImmutablePair<>(request.getID(), Types.ReplicationType.FULL));
+			} else if (request.getParam(4) == Types.ReplicationType.NONE) {
+				// set new variable with slice
+				Data data = ExecutionContext.createCacheableData((CacheBlock) request.getParam(7));
+				String id = String.valueOf(FederationUtils.getNextFedDataID());
+				ec.setVariable(id, data);
+
+				//FIXME
+				federatedData = new FederatedData(fedDataType, inetSocketAddress, ec.getMatrixObject(id).getFileName(), Types.ReplicationType.NONE);
+				feds.add(new ImmutablePair<>(new FederatedRange(new long[] {(long) request.getParam(8), (long) request.getParam(9)},
+					new long[] {(long) request.getParam(10), (long) request.getParam(11)}), federatedData));
+
+				_federatedWorker._broadcasts.add(new ImmutablePair<>(request.getID(), Types.ReplicationType.NONE));
+			}
+		}
+
+		if(fedDataType == DataType.MATRIX) {
+			MatrixObject data = (MatrixObject) ExecutionContext.createCacheableData(new MatrixBlock());
+			ec.setVariable(varname, data);
+
+			if(data != null)
+				data.getDataCharacteristics().setRows(rows).setCols(cols);
+			InitFEDInstruction.federateMatrix(data, feds);
+		}
+		else if(fedDataType == DataType.FRAME) {
+			FrameObject data = (FrameObject) ExecutionContext.createCacheableData(new FrameBlock());
+			ec.setVariable(varname, data);
+
+			if(data != null)
+				data.getDataCharacteristics().setRows(rows).setCols(cols);
+			InitFEDInstruction.federateFrame(data, feds);
+		}
+
+		return new FederatedResponse(ResponseType.SUCCESS_EMPTY);
+	}
+
 	private FederatedResponse execClear() {
 		try {
 			_ecm.clear();
