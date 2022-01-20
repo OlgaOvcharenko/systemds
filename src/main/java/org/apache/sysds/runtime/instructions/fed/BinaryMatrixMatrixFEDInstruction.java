@@ -74,25 +74,16 @@ public class BinaryMatrixMatrixFEDInstruction extends BinaryFEDInstruction
 			}
 		}
 		else { // matrix-matrix binary operations -> lhs fed input -> fed output
-			if(mo1.isFederated(FType.FULL) ) {
-				// full federated (row and col)
-				if(mo1.getFedMapping().getSize() == 1) {
-					// only one partition (MM on a single fed worker)
-					FederatedRequest fr1 = mo1.getFedMapping().broadcast(mo2);
-					fr2 = FederationUtils.callInstruction(instString, output, new CPOperand[]{input1, input2},
-					new long[]{mo1.getFedMapping().getID(), fr1.getID()}, true);
-					mo1.getFedMapping().execute(getTID(), true, fr1, fr2);
-				}
-				else {
-					throw new DMLRuntimeException("Matrix-matrix binary operations with a full partitioned federated input with multiple partitions are not supported yet.");
-				}
-			}
-			else if((mo1.isFederated(FType.ROW) && mo2.getNumRows() == 1)      //matrix-rowVect
-				|| (mo1.isFederated(FType.COL) && mo2.getNumColumns() == 1)) { //matrix-colVect
+			if(mo1.isFederated(FType.FULL) && mo1.getFedMapping().getSize() != 1)
+				throw new DMLRuntimeException("Matrix-matrix binary operations with a full partitioned federated input with multiple partitions are not supported yet.");
+			else if( mo1.isFederated(FType.FULL)
+				|| (mo1.isFederated(FType.ROW) && mo2.getNumRows() == 1)      //matrix-rowVect
+				|| (mo1.isFederated(FType.COL) && mo2.getNumColumns() == 1)    //matrix-colVect
+				|| (mo1.isFederated(FType.PART) && !mo2.isFederated()) ) {
 				// MV row partitioned row vector, MV col partitioned col vector
 				FederatedRequest fr1 = mo1.getFedMapping().broadcast(mo2);
 				fr2 = FederationUtils.callInstruction(instString, output, new CPOperand[]{input1, input2},
-				new long[]{mo1.getFedMapping().getID(), fr1.getID()}, true);
+					new long[]{mo1.getFedMapping().getID(), fr1.getID()}, true);
 				mo1.getFedMapping().execute(getTID(), true, fr1, fr2);
 			}
 			else if((mo1.isFederated(FType.ROW) ^ mo1.isFederated(FType.COL))
@@ -101,12 +92,6 @@ public class BinaryMatrixMatrixFEDInstruction extends BinaryFEDInstruction
 				FederatedRequest[] fr1 = mo1.getFedMapping().broadcastSliced(mo2, false);
 				fr2 = FederationUtils.callInstruction(instString, output, new CPOperand[]{input1, input2},
 					new long[]{mo1.getFedMapping().getID(), fr1[0].getID()}, true);
-				mo1.getFedMapping().execute(getTID(), true, fr1, fr2);
-			}
-			else if ( mo1.isFederated(FType.PART) && !mo2.isFederated() ){
-				FederatedRequest fr1 = mo1.getFedMapping().broadcast(mo2);
-				fr2 = FederationUtils.callInstruction(instString, output, new CPOperand[]{input1, input2},
-					new long[]{mo1.getFedMapping().getID(), fr1.getID()}, true);
 				mo1.getFedMapping().execute(getTID(), true, fr1, fr2);
 			}
 			else {
