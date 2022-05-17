@@ -393,7 +393,7 @@ public abstract class CacheableData<T extends CacheBlock> extends Data
 			MetaDataFormat mdf = (MetaDataFormat) _metaData;
 			if(mdf.getFileFormat() == FileFormat.FEDERATED){
 				InitFEDInstruction.federateMatrix(
-					this, ReaderWriterFederated.read(_hdfsFileName, mdf.getDataCharacteristics()));
+					this, ReaderWriterFederated.read(_hdfsFileName, mdf.getDataCharacteristics()), null);
 				return true;
 			}
 		}

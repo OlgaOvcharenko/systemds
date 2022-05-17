@@ -436,7 +436,7 @@ public class MatrixObject extends CacheableData<MatrixBlock> {
 
 		// If the file format is Federated use the federated reader.
 		if(iimd.getFileFormat() == FileFormat.FEDERATED) {
-			InitFEDInstruction.federateMatrix(this, ReaderWriterFederated.read(fname, mc));
+			InitFEDInstruction.federateMatrix(this, ReaderWriterFederated.read(fname, mc), null);
 		}
 
 		// Read matrix and maintain meta data,

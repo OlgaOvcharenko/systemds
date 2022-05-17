@@ -51,7 +51,7 @@ public class FederatedTestObjectConstructor {
 			d.add(new ImmutablePair<>(X1r, X1d));
 		}
 
-		InitFEDInstruction.federateMatrix(fed, d);
+		InitFEDInstruction.federateMatrix(fed, d, null);
 
 		return fed;
 
