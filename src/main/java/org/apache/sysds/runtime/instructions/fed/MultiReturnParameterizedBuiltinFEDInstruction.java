@@ -192,7 +192,7 @@ public class MultiReturnParameterizedBuiltinFEDInstruction extends ComputationFE
 
 		FrameBlock meta = new FrameBlock((int) fin.getNumColumns(), Types.ValueType.STRING);
 		meta.setColumnNames(colNames);
-		globalEncoder.getMetaData(meta);
+		globalEncoder.getMetaData(meta, meta.getNumRows());
 		globalEncoder.initMetaData(meta);
 
 		encodeFederatedFrames(fedMapping, globalEncoder, ec.getMatrixObject(getOutput(0)));

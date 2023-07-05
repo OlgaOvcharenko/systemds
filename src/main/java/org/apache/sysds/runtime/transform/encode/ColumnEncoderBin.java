@@ -19,8 +19,6 @@
 
 package org.apache.sysds.runtime.transform.encode;
 
-import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
-
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
@@ -29,11 +27,14 @@ import java.util.HashMap;
 import java.util.PriorityQueue;
 import java.util.concurrent.Callable;
 
+import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
 import org.apache.commons.lang3.tuple.MutableTriple;
 import org.apache.sysds.api.DMLScript;
 import org.apache.sysds.lops.Lop;
 import org.apache.sysds.runtime.controlprogram.caching.CacheBlock;
 import org.apache.sysds.runtime.frame.data.FrameBlock;
+import org.apache.sysds.runtime.frame.data.columns.RaggedArray;
+import org.apache.sysds.runtime.frame.data.columns.StringArray;
 import org.apache.sysds.runtime.matrix.data.MatrixBlock;
 import org.apache.sysds.utils.stats.TransformStatistics;
 
@@ -337,17 +338,21 @@ public class ColumnEncoderBin extends ColumnEncoder {
 		meta.ensureAllocatedColumns(_binMaxs.length);
 	}
 
-	@Override
-	public FrameBlock getMetaData(FrameBlock meta) {
-		// allocate frame if necessary
-		meta.ensureAllocatedColumns(_binMaxs.length);
+	protected int getMetaDataSize() {
+		return _binMaxs.length;
+	}
 
+	@Override
+	public FrameBlock getMetaData(FrameBlock meta, int nrows) {
 		// serialize the internal state into frame meta data
 		meta.getColumnMetadata(_colID - 1).setNumDistinct(_numBin);
+		StringArray colData = new StringArray(_binMaxs.length);
 		for(int i = 0; i < _binMaxs.length; i++) {
 			String sb = _binMins[i] + Lop.DATATYPE_PREFIX + _binMaxs[i];
-			meta.set(i, _colID - 1, sb);
+			colData.set(i, sb);
 		}
+		RaggedArray<String> metaCol = new RaggedArray<>(colData, nrows);
+		meta.setColumn(_colID-1, metaCol);
 		return meta;
 	}
 

@@ -24,13 +24,17 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.*;
+import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
@@ -128,7 +132,8 @@ public class MultiColumnEncoder implements Encoder {
 					// fix it for this encoder would be very dirty. This will only have a performance impact if there
 					// is a lot of recoding in combination with the legacyMVImpute.
 					// But since it is legacy this should be fine
-					_meta = getMetaData(new FrameBlock(in.getNumColumns(), Types.ValueType.STRING));
+					int metaDataSize = Collections.max(_columnEncoders, Comparator.comparing(ColumnEncoder::getMetaDataSize)).getMetaDataSize();
+					_meta = getMetaData(new FrameBlock(in.getNumColumns(), Types.ValueType.STRING), metaDataSize);
 					initMetaData(_meta);
 				}
 				// apply meta data
@@ -655,18 +660,19 @@ public class MultiColumnEncoder implements Encoder {
 	}
 
 	@Override
-	public FrameBlock getMetaData(FrameBlock meta) {
+	public FrameBlock getMetaData(FrameBlock meta, int nrows) {
 		getMetaData(meta, 1);
 		return meta;
 	}
 
-	public FrameBlock getMetaData(FrameBlock meta, int k) {
+	public FrameBlock getMetaData(FrameBlock meta, int nrows, int k) {
 		long t0 = System.nanoTime();
 		if(_meta != null)
 			return _meta;
 		if(meta == null)
 			meta = new FrameBlock(_columnEncoders.size(), ValueType.STRING);
 		this.allocateMetaData(meta);
+		nrows = Collections.max(_columnEncoders, Comparator.comparing(ColumnEncoder::getMetaDataSize)).getMetaDataSize();
 		if (k > 1) {
 			try {
 				ExecutorService pool = CommonThreadPool.get(k);
@@ -684,7 +690,7 @@ public class MultiColumnEncoder implements Encoder {
 		}
 		else {
 			for(ColumnEncoder columnEncoder : _columnEncoders)
-				columnEncoder.getMetaData(meta);
+				columnEncoder.getMetaData(meta, nrows);
 		}
 
 		//_columnEncoders.stream().parallel().forEach(columnEncoder ->
@@ -1103,7 +1109,7 @@ public class MultiColumnEncoder implements Encoder {
 
 		@Override
 		public Void call() throws Exception {
-			_encoder._meta = _encoder.getMetaData(new FrameBlock(_input.getNumColumns(), Types.ValueType.STRING));
+			_encoder._meta = _encoder.getMetaData(new FrameBlock(_input.getNumColumns(), Types.ValueType.STRING), _input.getNumRows());
 			_encoder.initMetaData(_encoder._meta);
 			return null;
 		}
@@ -1252,7 +1258,7 @@ public class MultiColumnEncoder implements Encoder {
 
 		@Override
 		public Object call() throws Exception {
-			_colEncoder.getMetaData(_out);
+			_colEncoder.getMetaData(_out, _out.getNumRows());
 			return null;
 		}
 

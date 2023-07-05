@@ -19,13 +19,14 @@
 
 package org.apache.sysds.runtime.transform.encode;
 
-import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
-
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 
+import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
 import org.apache.sysds.api.DMLScript;
 import org.apache.sysds.runtime.DMLRuntimeException;
 import org.apache.sysds.runtime.controlprogram.caching.CacheBlock;
@@ -226,8 +227,12 @@ public class ColumnEncoderDummycode extends ColumnEncoder {
 		return;
 	}
 
+	protected int getMetaDataSize() {
+		return 0;
+	}
+
 	@Override
-	public FrameBlock getMetaData(FrameBlock meta) {
+	public FrameBlock getMetaData(FrameBlock meta, int nrows) {
 		return meta;
 	}
 

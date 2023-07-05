@@ -24,6 +24,7 @@ import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -304,12 +305,16 @@ public class ColumnEncoderComposite extends ColumnEncoder {
 			columnEncoder.allocateMetaData(meta);
 	}
 
+	protected int getMetaDataSize() {
+		return Collections.max(_columnEncoders, Comparator.comparing(ColumnEncoder::getMetaDataSize)).getMetaDataSize();
+	}
+
 	@Override
-	public FrameBlock getMetaData(FrameBlock out) {
+	public FrameBlock getMetaData(FrameBlock out, int size) {
 		if(_meta != null)
 			return _meta;
 		for(ColumnEncoder columnEncoder : _columnEncoders)
-			columnEncoder.getMetaData(out);
+			columnEncoder.getMetaData(out, size);
 		return out;
 	}
 

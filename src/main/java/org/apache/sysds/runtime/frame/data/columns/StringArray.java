@@ -47,6 +47,11 @@ public class StringArray extends Array<String> {
 		_data = data;
 	}
 
+	public StringArray(int size) {
+		super(size);
+		_data = new String[size];
+	}
+
 	private StringArray(String[] data, long materializedSize) {
 		this(data);
 		this.materializedSize = materializedSize;

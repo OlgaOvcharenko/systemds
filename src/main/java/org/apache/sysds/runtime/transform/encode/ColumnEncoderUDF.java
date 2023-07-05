@@ -145,8 +145,12 @@ public class ColumnEncoderUDF extends ColumnEncoder {
 		return;
 	}
 
+	protected int getMetaDataSize() {
+		return 0;
+	}
+
 	@Override
-	public FrameBlock getMetaData(FrameBlock meta) {
+	public FrameBlock getMetaData(FrameBlock meta, int nrows) {
 		// do nothing
 		return meta;
 	}

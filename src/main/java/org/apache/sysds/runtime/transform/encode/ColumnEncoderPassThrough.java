@@ -19,11 +19,10 @@
 
 package org.apache.sysds.runtime.transform.encode;
 
-import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
-
 import java.util.ArrayList;
 import java.util.List;
 
+import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
 import org.apache.sysds.api.DMLScript;
 import org.apache.sysds.runtime.controlprogram.caching.CacheBlock;
 import org.apache.sysds.runtime.data.SparseBlock;
@@ -134,8 +133,12 @@ public class ColumnEncoderPassThrough extends ColumnEncoder {
 		return;
 	}
 
+	protected int getMetaDataSize() {
+		return 0;
+	}
+
 	@Override
-	public FrameBlock getMetaData(FrameBlock meta) {
+	public FrameBlock getMetaData(FrameBlock meta, int nrows) {
 		// do nothing
 		return meta;
 	}

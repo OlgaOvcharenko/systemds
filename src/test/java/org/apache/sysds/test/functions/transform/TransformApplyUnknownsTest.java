@@ -51,7 +51,7 @@ public class TransformApplyUnknownsTest extends AutomatedTestBase
 			String spec = "{ids:true, recode:[1]}";
 			MultiColumnEncoder encoder = EncoderFactory.createEncoder(spec, data.getColumnNames(), 1, null);
 			encoder.build(data);
-			FrameBlock meta = encoder.getMetaData(new FrameBlock(1, ValueType.STRING));
+			FrameBlock meta = encoder.getMetaData(new FrameBlock(1, ValueType.STRING), 0);
 			
 			//apply
 			MultiColumnEncoder encoder2 = EncoderFactory.createEncoder(spec, data.getColumnNames(), 1, meta);
@@ -81,7 +81,7 @@ public class TransformApplyUnknownsTest extends AutomatedTestBase
 			String spec = "{ids:true, bin:[{id:1, method:equi-width, numbins:7}] }";
 			MultiColumnEncoder encoder = EncoderFactory.createEncoder(spec, data.getColumnNames(), 1, null);
 			encoder.build(data);
-			FrameBlock meta = encoder.getMetaData(new FrameBlock(1, ValueType.STRING));
+			FrameBlock meta = encoder.getMetaData(new FrameBlock(1, ValueType.STRING), 0);
 			
 			//apply
 			MultiColumnEncoder encoder2 = EncoderFactory.createEncoder(spec, data.getColumnNames(), 1, meta);

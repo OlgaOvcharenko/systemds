@@ -19,17 +19,18 @@
 
 package org.apache.sysds.runtime.transform.encode;
 
-import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
-
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
 import java.util.List;
 
+import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
 import org.apache.sysds.api.DMLScript;
 import org.apache.sysds.runtime.controlprogram.caching.CacheBlock;
 import org.apache.sysds.runtime.frame.data.FrameBlock;
 import org.apache.sysds.runtime.frame.data.columns.Array;
+import org.apache.sysds.runtime.frame.data.columns.RaggedArray;
+import org.apache.sysds.runtime.frame.data.columns.StringArray;
 import org.apache.sysds.runtime.matrix.data.MatrixBlock;
 import org.apache.sysds.runtime.util.DependencyTask;
 import org.apache.sysds.runtime.util.UtilFunctions;
@@ -134,13 +135,18 @@ public class ColumnEncoderFeatureHash extends ColumnEncoder {
 			meta.ensureAllocatedColumns(1);
 	}
 
+	protected int getMetaDataSize() {
+		return 1;
+	}
+
 	@Override
-	public FrameBlock getMetaData(FrameBlock meta) {
+	public FrameBlock getMetaData(FrameBlock meta, int nrows) {
 		if(!isApplicable())
 			return meta;
 
-		meta.ensureAllocatedColumns(1);
-		meta.set(0, _colID - 1, String.valueOf(_K));
+		String[] vals = {String.valueOf(_K)};
+		RaggedArray<String> metaCol = new RaggedArray<>(new StringArray(vals), nrows);
+		meta.setColumn(_colID-1, metaCol);
 		return meta;
 	}
 

@@ -58,9 +58,10 @@ public interface Encoder extends Externalizable {
 	 * Construct a frame block out of the transform meta data.
 	 *
 	 * @param out output frame block
+	 * @param nrows numer of rows in frame
 	 * @return output frame block?
 	 */
-	FrameBlock getMetaData(FrameBlock out);
+	FrameBlock getMetaData(FrameBlock out, int nrows);
 
 	/**
 	 * Sets up the required meta data for a subsequent call to apply.

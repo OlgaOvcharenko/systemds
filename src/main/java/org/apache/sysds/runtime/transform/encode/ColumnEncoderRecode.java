@@ -19,8 +19,6 @@
 
 package org.apache.sysds.runtime.transform.encode;
 
-import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
-
 import java.io.IOException;
 import java.io.ObjectInput;
 import java.io.ObjectOutput;
@@ -32,11 +30,14 @@ import java.util.Map.Entry;
 import java.util.Objects;
 import java.util.concurrent.Callable;
 
+import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
 import org.apache.sysds.api.DMLScript;
 import org.apache.sysds.lops.Lop;
 import org.apache.sysds.runtime.compress.estim.sample.SampleEstimatorFactory;
 import org.apache.sysds.runtime.controlprogram.caching.CacheBlock;
 import org.apache.sysds.runtime.frame.data.FrameBlock;
+import org.apache.sysds.runtime.frame.data.columns.RaggedArray;
+import org.apache.sysds.runtime.frame.data.columns.StringArray;
 import org.apache.sysds.runtime.matrix.data.MatrixBlock;
 import org.apache.sysds.utils.stats.TransformStatistics;
 
@@ -301,25 +302,28 @@ public class ColumnEncoderRecode extends ColumnEncoder {
 		meta.ensureAllocatedColumns(getNumDistinctValues());
 	}
 
+	protected int getMetaDataSize() {
+		return getNumDistinctValues();
+	}
+
 	@Override
-	public FrameBlock getMetaData(FrameBlock meta) {
+	public FrameBlock getMetaData(FrameBlock meta, int nrows) {
 		if(!isApplicable())
 			return meta;
 
-		// inverse operation to initRecodeMaps
-
 		// allocate output rows
-		meta.ensureAllocatedColumns(getNumDistinctValues());
+		StringArray colData = new StringArray(getNumDistinctValues());
 
 		// create compact meta data representation
 		StringBuilder sb = new StringBuilder(); // for reuse
 		int rowID = 0;
 		for(Entry<Object, Long> e : _rcdMap.entrySet()) {
-			meta.set(rowID++, _colID - 1, // 1-based
-				constructRecodeMapEntry(e.getKey(), e.getValue(), sb));
+			colData.set(rowID++, constructRecodeMapEntry(e.getKey(), e.getValue(), sb));
 		}
-		meta.getColumnMetadata(_colID - 1).setNumDistinct(getNumDistinctValues());
+		RaggedArray<String> metaCol = new RaggedArray<>(colData, nrows);
+		meta.setColumn(_colID-1, metaCol);
 
+		meta.getColumnMetadata(_colID - 1).setNumDistinct(getNumDistinctValues());
 		return meta;
 	}
 

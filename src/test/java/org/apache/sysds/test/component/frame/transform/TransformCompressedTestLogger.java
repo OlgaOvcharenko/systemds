@@ -19,11 +19,10 @@
 
 package org.apache.sysds.test.component.frame.transform;
 
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
-
 import java.util.List;
 
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.log4j.Level;
@@ -73,11 +72,11 @@ public class TransformCompressedTestLogger {
 			MultiColumnEncoder encoderCompressed = EncoderFactory.createEncoder(spec, data.getColumnNames(),
 				data.getNumColumns(), meta);
 			MatrixBlock outCompressed = encoderCompressed.encode(data, true);
-			FrameBlock outCompressedMD = encoderCompressed.getMetaData(null);
+			FrameBlock outCompressedMD = encoderCompressed.getMetaData(null, 0);
 			MultiColumnEncoder encoderNormal = EncoderFactory.createEncoder(spec, data.getColumnNames(),
 				data.getNumColumns(), meta);
 			MatrixBlock outNormal = encoderNormal.encode(data);
-			FrameBlock outNormalMD = encoderNormal.getMetaData(null);
+			FrameBlock outNormalMD = encoderNormal.getMetaData(null, 0);
 
 			final List<LoggingEvent> log = LoggingUtils.reinsert(appender);
 			assertTrue(log.get(3).getMessage().toString().contains("Compression ratio"));

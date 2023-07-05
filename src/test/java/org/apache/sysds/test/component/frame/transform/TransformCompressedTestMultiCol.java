@@ -19,12 +19,11 @@
 
 package org.apache.sysds.test.component.frame.transform;
 
-import static org.junit.Assert.fail;
-
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 
+import static org.junit.Assert.fail;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
 import org.apache.sysds.common.Types.ValueType;
@@ -145,11 +144,11 @@ public class TransformCompressedTestMultiCol {
 				data.getNumColumns(), meta);
 
 			MatrixBlock outCompressed = encoderCompressed.encode(data, k, true);
-			FrameBlock outCompressedMD = encoderCompressed.getMetaData(null);
+			FrameBlock outCompressedMD = encoderCompressed.getMetaData(null, 0);
 			MultiColumnEncoder encoderNormal = EncoderFactory.createEncoder(spec, data.getColumnNames(),
 				data.getNumColumns(), meta);
 			MatrixBlock outNormal = encoderNormal.encode(data, k);
-			FrameBlock outNormalMD = encoderNormal.getMetaData(null);
+			FrameBlock outNormalMD = encoderNormal.getMetaData(null, 0);
 
 			TestUtils.compareMatrices(outNormal, outCompressed, 0, "Not Equal after apply");
 			TestUtils.compareFrames(outNormalMD, outCompressedMD, true);

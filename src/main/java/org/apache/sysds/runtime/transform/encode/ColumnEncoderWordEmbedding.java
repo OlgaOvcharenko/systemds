@@ -19,11 +19,10 @@
 
 package org.apache.sysds.runtime.transform.encode;
 
-import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
-
 import java.util.HashMap;
 import java.util.Map;
 
+import static org.apache.sysds.runtime.util.UtilFunctions.getEndIndex;
 import org.apache.commons.lang.NotImplementedException;
 import org.apache.sysds.runtime.controlprogram.caching.CacheBlock;
 import org.apache.sysds.runtime.frame.data.FrameBlock;
@@ -118,8 +117,12 @@ public class ColumnEncoderWordEmbedding extends ColumnEncoder {
         throw new NotImplementedException();
     }
 
+    protected int getMetaDataSize() {
+        return 0;
+    }
+
     @Override
-    public FrameBlock getMetaData(FrameBlock out) {
+    public FrameBlock getMetaData(FrameBlock out, int nrows) {
         throw new NotImplementedException();
     }
 
