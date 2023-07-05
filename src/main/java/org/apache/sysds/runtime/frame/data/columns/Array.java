@@ -50,7 +50,7 @@ public abstract class Array<T> implements Writable {
 
 	protected Array(int size) {
 		_size = size;
-		if(size <= 0)
+		if(size < 0)
 			throw new DMLRuntimeException("Invalid zero/negative size of Array");
 	}
 

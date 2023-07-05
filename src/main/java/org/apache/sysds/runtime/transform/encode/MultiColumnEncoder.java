@@ -661,7 +661,7 @@ public class MultiColumnEncoder implements Encoder {
 
 	@Override
 	public FrameBlock getMetaData(FrameBlock meta, int nrows) {
-		getMetaData(meta, 1);
+		getMetaData(meta, nrows, 1);
 		return meta;
 	}
 
