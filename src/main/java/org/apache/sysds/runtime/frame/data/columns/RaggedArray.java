@@ -24,7 +24,9 @@ import java.io.DataOutput;
 import java.io.IOException;
 import java.util.Arrays;
 
+import org.apache.commons.lang.NotImplementedException;
 import org.apache.sysds.common.Types.ValueType;
+import org.apache.sysds.runtime.DMLRuntimeException;
 import org.apache.sysds.runtime.frame.data.columns.ArrayFactory.FrameArrayType;
 import org.apache.sysds.runtime.matrix.data.Pair;
 
@@ -57,14 +59,44 @@ public class RaggedArray<T> extends Array<T> {
 		this._a = a;
 	}
 
+	protected Array<T> getInnerArray(){
+		return _a;
+	}
+
+	@Override
+	public Object get() {
+		throw new NotImplementedException("Should not be called");
+	}
+
 	@Override
 	public void write(DataOutput out) throws IOException {
+		out.writeByte(FrameArrayType.RAGGED.ordinal());
 		_a.write(out);
 	}
 
 	@Override
 	public void readFields(DataInput in) throws IOException {
-		_a.readFields(in);
+		throw new DMLRuntimeException("Should not be called");
+	}
+
+	protected static RaggedArray<?> readRagged(DataInput in, int nRow) throws IOException {
+		final Array<?> a = ArrayFactory.read(in, nRow);
+		switch(a.getValueType()) {
+			case BOOLEAN:
+				return new RaggedArray<>((Array<Boolean>) a, nRow);
+			case FP32:
+				return new RaggedArray<>((Array<Float>) a, nRow);
+			case FP64:
+				return new RaggedArray<>((Array<Double>) a, nRow);
+			case UINT8:
+			case INT32:
+				return new RaggedArray<>((Array<Integer>) a, nRow);
+			case INT64:
+				return new RaggedArray<>((Array<Long>) a, nRow);
+			case CHARACTER:
+			default:
+				return new RaggedArray<>((Array<Character>) a, nRow);
+		}
 	}
 
 	@Override
@@ -75,18 +107,9 @@ public class RaggedArray<T> extends Array<T> {
 
 	}
 
-	protected Array<T> getInnerArray(){
-		return _a;
-	}
-
-	@Override
-	public Object get() {
-		return _a.get();
-	}
-
 	@Override
 	public double getAsDouble(int i) {
-		return i < _a._size ? _a.getAsDouble(i) : Double.NaN;
+		return i < _a._size ? _a.getAsDouble(i) : 0;
 	}
 
 	@Override
@@ -98,18 +121,34 @@ public class RaggedArray<T> extends Array<T> {
 	public void set(int index, T value) {
 		if (index < _a._size)
 			_a.set(index, value);
+		else if(index < super.size()) {
+			_a.reset(index + 1);
+			_a.set(index, value);
+			LOG.warn("Reallocated ragged array");
+		}
+
 	}
 
 	@Override
 	public void set(int index, double value) {
 		if (index < _a._size)
 			_a.set(index, value);
+		else if(index < super.size()) {
+			_a.reset(index + 1);
+			_a.set(index, value);
+			LOG.warn("Reallocated ragged array");
+		}
 	}
 
 	@Override
 	public void set(int index, String value) {
 		if (index < _a._size)
 			_a.set(index, value);
+		else if(index < super.size()) {
+			_a.reset(index + 1);
+			_a.set(index, value);
+			LOG.warn("Reallocated ragged array");
+		}
 	}
 
 	@Override
@@ -127,6 +166,11 @@ public class RaggedArray<T> extends Array<T> {
 				_a.set(rl, ru, value);
 			else
 				throw new RuntimeException("RaggedArray set: value type should be same to RaggedArray type " + _a.getClass());
+		else if(rl >= 0 && rl < super.size() && ru < super.size()) {
+			_a.reset(rl + 1);
+			_a.set(rl, ru, value);
+			LOG.warn("Reallocated ragged array");
+		}
 	}
 
 
@@ -156,20 +200,37 @@ public class RaggedArray<T> extends Array<T> {
 
 	@Override
 	public void append(String value) {
-		_a.append(value);
+		Array<T> oldVals = _a.clone();
+		_a.reset(super.size() + 1);
+		_a.set(0, oldVals.size() - 1, oldVals);
+		_a.set(super.size(), value);
 		super._size += 1;
+
+		LOG.warn("Fully allocated ragged array");
 	}
 
 	@Override
 	public void append(T value) {
-		_a.append(value);
+		Array<T> oldVals = _a.clone();
+		_a.reset(super.size() + 1);
+		_a.set(0, oldVals.size() - 1, oldVals);
+		_a.set(super.size(), value);
 		super._size += 1;
+
+		LOG.warn("Fully allocated ragged array");
 	}
 
 	@Override
 	public Array<T> append(Array<T> other) {
-		super._size += other._size;
-		return _a.append(other);
+		Array<T> oldVals = _a.clone();
+		_a.reset(super.size() + other._size + 1);
+		_a.set(0, oldVals.size() - 1, oldVals);
+		_a.set(super.size(), super.size() + other.size() - 1, other);
+		super._size += other.size();
+
+		LOG.warn("Fully allocated ragged array");
+
+		return this;
 	}
 
 	@Override
@@ -189,7 +250,7 @@ public class RaggedArray<T> extends Array<T> {
 
 	@Override
 	public byte[] getAsByteArray() {
-		return _a.getAsByteArray();
+		throw new NotImplementedException("Unimplemented method 'getAsByteArray'");
 	}
 
 	@Override
@@ -209,7 +270,7 @@ public class RaggedArray<T> extends Array<T> {
 
 	@Override
 	public long getExactSerializedSize() {
-		return _a.getExactSerializedSize();
+		return _a.getExactSerializedSize() + 1;
 	}
 
 	@Override
@@ -254,11 +315,13 @@ public class RaggedArray<T> extends Array<T> {
 
 	@Override
 	public void fill(String val) {
+		_a.reset(super.size());
 		_a.fill(val);
 	}
 
 	@Override
 	public void fill(T val) {
+		_a.reset(super.size());
 		_a.fill(val);
 	}
 
@@ -306,4 +369,24 @@ public class RaggedArray<T> extends Array<T> {
 		return idx < _a.size() ? _a.hashDouble(idx): Double.NaN;
 	}
 
+	@Override
+	public long getInMemorySize() {
+		return baseMemoryCost() + _a.getInMemorySize() + 8;
+	}
+
+	@Override
+	public boolean containsNull(){
+		return (_a.size() < super._size) || _a.containsNull();
+	}
+
+	@Override
+	public String toString() {
+		StringBuilder sb = new StringBuilder(_size + 2);
+		sb.append(super.toString()).append("<").append(_a.getClass().getSimpleName()).append(">:[");
+		for(int i = 0; i < _size - 1; i++)
+			sb.append(get(i)).append(",");
+		sb.append(get(_size - 1));
+		sb.append("]");
+		return sb.toString();
+	}
 }

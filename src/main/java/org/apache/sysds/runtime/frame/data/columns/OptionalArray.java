@@ -110,16 +110,16 @@ public class OptionalArray<T> extends Array<T> {
 		final ABooleanArray n = (ABooleanArray) ArrayFactory.read(in, nRow);
 		switch(a.getValueType()) {
 			case BOOLEAN:
-				return new OptionalArray<Boolean>((Array<Boolean>) a, n);
+				return new OptionalArray<>((Array<Boolean>) a, n);
 			case FP32:
-				return new OptionalArray<Float>((Array<Float>) a, n);
+				return new OptionalArray<>((Array<Float>) a, n);
 			case FP64:
-				return new OptionalArray<Double>((Array<Double>) a, n);
+				return new OptionalArray<>((Array<Double>) a, n);
 			case UINT8:
 			case INT32:
-				return new OptionalArray<Integer>((Array<Integer>) a, n);
+				return new OptionalArray<>((Array<Integer>) a, n);
 			case INT64:
-				return new OptionalArray<Long>((Array<Long>) a, n);
+				return new OptionalArray<>((Array<Long>) a, n);
 			case CHARACTER:
 			default:
 				return new OptionalArray<Character>((Array<Character>) a, n);
@@ -442,9 +442,9 @@ public class OptionalArray<T> extends Array<T> {
 	@Override
 	public String toString() {
 		StringBuilder sb = new StringBuilder(_size + 2);
-		sb.append(super.toString() + "<" + _a.getClass().getSimpleName() + ">:[");
+		sb.append(super.toString()).append("<").append(_a.getClass().getSimpleName()).append(">:[");
 		for(int i = 0; i < _size - 1; i++)
-			sb.append(get(i) + ",");
+			sb.append(get(i)).append(",");
 		sb.append(get(_size - 1));
 		sb.append("]");
 		return sb.toString();
