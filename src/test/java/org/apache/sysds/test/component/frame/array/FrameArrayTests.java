@@ -1645,7 +1645,7 @@ public class FrameArrayTests {
 		}
 	}
 
-	@Test(expected = DMLRuntimeException.class)
+	@Test
 	public void testBooleanSelectEmpty() {
 		boolean[] select = new boolean[a.size()];
 		a.select(select, 0);
